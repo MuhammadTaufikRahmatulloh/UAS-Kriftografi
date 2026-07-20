@@ -646,7 +646,7 @@ const algoConfig = {
     },
     aes: {
         name: 'AES',
-        module: AES128,
+        module: AES,
         inputLabel: 'Plaintext/Ciphertext (hex, 128-bit / 16 byte)',
         keyLabel: 'Key (hex, 128-bit / 16 byte)',
         inputPlaceholder: '00112233445566778899aabbccddeeff',
