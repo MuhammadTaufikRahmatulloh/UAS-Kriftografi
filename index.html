@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Simulasi Kriptografi • DES • S‑DES • AES • S‑AES</title>
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+    <div class="app-wrapper">
+        <!-- ===== HEADER ===== -->
+        <header class="header">
+            <h1>🔐 Simulasi Algoritma Kriptografi</h1>
+            <div class="subhead">
+                DES &bull; S‑DES &bull; AES‑128 &bull; S‑AES &mdash; enkripsi / dekripsi dengan tampilan <strong>step‑by‑step</strong>
+            </div>
+        </header>
+
+        <!-- ===== NAVIGASI ===== -->
+        <nav class="nav-tabs" id="navTabs">
+            <button class="active" data-algo="des">DES</button>
+            <button data-algo="sdes">S‑DES</button>
+            <button data-algo="aes">AES‑128</button>
+            <button data-algo="saes">S‑AES</button>
+        </nav>
+
+        <!-- ===== KONTEN DINAMIS ===== -->
+        <div id="appContent"></div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
