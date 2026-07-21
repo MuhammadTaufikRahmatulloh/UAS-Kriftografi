@@ -96,36 +96,67 @@ const SDES = {
 };
 
 // ================================================================
-//  2.  ALGORITMA S-AES (LENGKAP)
+//  2.  ALGORITMA S-AES (LENGKAP) — DIPERBAIKI
 // ================================================================
 const SAES = {
     SBOX: [0x9, 0x4, 0xA, 0xB, 0xD, 0x1, 0x8, 0x5, 0x6, 0x2, 0x0, 0x3, 0xC, 0xE, 0xF, 0x7],
+    INV_SBOX: [0xA, 0x5, 0x9, 0xB, 0x1, 0x7, 0x8, 0xF, 0x6, 0x0, 0x2, 0x3, 0xC, 0x4, 0xD, 0xE],
     RCON: [0x8, 0x3],
+    
     xorNib(a, b) { return a ^ b; },
     subNib(n) { return this.SBOX[n]; },
+    invSubNib(n) { return this.INV_SBOX[n]; },
 
     keyExpansion(key16) {
-        const w0 = key16.slice(0, 4),
-            w1 = key16.slice(4, 8);
-        const rot = [w1[1], w1[2], w1[3], w1[0]];
-        const subRot = rot.map(n => this.subNib(n));
-        const w2 = w0.map((n, i) => this.xorNib(n, this.xorNib(subRot[i], this.RCON[0])));
+        const w0 = key16.slice(0, 4);
+        const w1 = key16.slice(4, 8);
+        
+        // Untuk K1 (w2, w3)
+        const rot1 = [w1[1], w1[2], w1[3], w1[0]];
+        const subRot1 = rot1.map(n => this.subNib(n));
+        const w2 = w0.map((n, i) => this.xorNib(n, this.xorNib(subRot1[i], this.RCON[0])));
         const w3 = w1.map((n, i) => this.xorNib(n, w2[i]));
+        
+        // Untuk K2 (w4, w5)
         const rot2 = [w3[1], w3[2], w3[3], w3[0]];
         const subRot2 = rot2.map(n => this.subNib(n));
         const w4 = w2.map((n, i) => this.xorNib(n, this.xorNib(subRot2[i], this.RCON[1])));
         const w5 = w3.map((n, i) => this.xorNib(n, w4[i]));
-        return { k0: w0.concat(w1), k1: w2.concat(w3), k2: w4.concat(w5) };
+        
+        return { 
+            k0: w0.concat(w1), 
+            k1: w2.concat(w3), 
+            k2: w4.concat(w5) 
+        };
     },
 
-    addRoundKey(state, key) { return state.map((n, i) => this.xorNib(n, key[i])); },
-    subNibState(state) { return state.map(n => this.subNib(n)); },
-    shiftRows(state) { return [state[0], state[1], state[3], state[2]]; },
+    addRoundKey(state, key) { 
+        return state.map((n, i) => this.xorNib(n, key[i])); 
+    },
+    
+    subNibState(state) { 
+        return state.map(n => this.subNib(n)); 
+    },
+    
+    invSubNibState(state) { 
+        return state.map(n => this.invSubNib(n)); 
+    },
+    
+    shiftRows(state) { 
+        // State: [a, b, c, d] → matriks [[a, b], [c, d]]
+        // ShiftRows: baris ke-2 digeser 1 ke kiri
+        return [state[0], state[1], state[3], state[2]]; 
+    },
 
     mixColumns(state) {
         const [a, b, c, d] = state;
-        const gfMul2 = (x) => { let r = x << 1; if (r & 0x10) r ^= 0x3; return r & 0xF; };
+        const gfMul2 = (x) => { 
+            let r = x << 1; 
+            if (r & 0x10) r ^= 0x3; 
+            return r & 0xF; 
+        };
         const gfMul3 = (x) => this.xorNib(gfMul2(x), x);
+        
         return [
             this.xorNib(gfMul2(a), gfMul3(b)),
             this.xorNib(gfMul3(a), gfMul2(b)),
@@ -134,13 +165,36 @@ const SAES = {
         ];
     },
 
+    invMixColumns(state) {
+        const [a, b, c, d] = state;
+        const gfMul2 = (x) => { 
+            let r = x << 1; 
+            if (r & 0x10) r ^= 0x3; 
+            return r & 0xF; 
+        };
+        const gfMul3 = (x) => this.xorNib(gfMul2(x), x);
+        const gfMul9 = (x) => this.xorNib(gfMul2(gfMul2(gfMul2(x))), x);
+        const gfMulB = (x) => this.xorNib(gfMul9(x), gfMul2(x));
+        const gfMulD = (x) => this.xorNib(gfMul9(x), gfMul2(gfMul2(x)));
+        const gfMulE = (x) => this.xorNib(gfMul9(x), gfMul2(gfMul2(gfMul2(x))));
+        
+        return [
+            this.xorNib(gfMul9(a), gfMulB(b)),
+            this.xorNib(gfMulB(a), gfMul9(b)),
+            this.xorNib(gfMul9(c), gfMulB(d)),
+            this.xorNib(gfMulB(c), gfMul9(d))
+        ];
+    },
+
     encrypt(plain16, key16) {
         const keys = this.keyExpansion(key16);
         let state = this.addRoundKey(plain16, keys.k0);
+        // Round 1
         state = this.subNibState(state);
         state = this.shiftRows(state);
         state = this.mixColumns(state);
         state = this.addRoundKey(state, keys.k1);
+        // Round 2
         state = this.subNibState(state);
         state = this.shiftRows(state);
         state = this.addRoundKey(state, keys.k2);
@@ -150,12 +204,14 @@ const SAES = {
     decrypt(cipher16, key16) {
         const keys = this.keyExpansion(key16);
         let state = this.addRoundKey(cipher16, keys.k2);
+        // Round 2 (inverse)
         state = this.shiftRows(state);
-        state = this.subNibState(state);
+        state = this.invSubNibState(state);
         state = this.addRoundKey(state, keys.k1);
-        state = this.mixColumns(state);
+        state = this.invMixColumns(state);
+        // Round 1 (inverse)
         state = this.shiftRows(state);
-        state = this.subNibState(state);
+        state = this.invSubNibState(state);
         state = this.addRoundKey(state, keys.k0);
         return state;
     },
@@ -188,16 +244,16 @@ const SAES = {
             push('🔀 AddRoundKey K2 (Mulai Dekripsi)', state.join(''));
             state = this.shiftRows(state);
             push('↕ InvShiftRows', state.join(''));
-            state = this.subNibState(state);
-            push('🧩 SubNib (Inv)', state.join(''));
+            state = this.invSubNibState(state);
+            push('🧩 InvSubNib', state.join(''));
             state = this.addRoundKey(state, keys.k1);
             push('🔀 AddRoundKey K1', state.join(''));
-            state = this.mixColumns(state);
-            push('🌀 MixColumns (Inv)', state.join(''));
+            state = this.invMixColumns(state);
+            push('🌀 InvMixColumns', state.join(''));
             state = this.shiftRows(state);
             push('↕ InvShiftRows', state.join(''));
-            state = this.subNibState(state);
-            push('🧩 SubNib (Inv)', state.join(''));
+            state = this.invSubNibState(state);
+            push('🧩 InvSubNib', state.join(''));
             state = this.addRoundKey(state, keys.k0);
             push('🔀 AddRoundKey K0 (Final)', state.join(''));
         }
@@ -360,7 +416,7 @@ const AES = {
 };
 
 // ================================================================
-//  4.  DES (LENGKAP DENGAN STEP)
+//  4.  DES (LENGKAP DENGAN STEP) — DIPERBAIKI
 // ================================================================
 const DES = {
     IP: [
@@ -428,48 +484,56 @@ const DES = {
     SHIFTS: [1, 1, 2, 2, 2, 2, 2, 2, 1, 2, 2, 2, 2, 2, 2, 1],
     
     SBOX: [
+        // S1
         [
             [14, 4, 13, 1, 2, 15, 11, 8, 3, 10, 6, 12, 5, 9, 0, 7],
             [0, 15, 7, 4, 14, 2, 13, 1, 10, 6, 12, 11, 9, 5, 3, 8],
             [4, 1, 14, 8, 13, 6, 2, 11, 15, 12, 9, 7, 3, 10, 5, 0],
             [15, 12, 8, 2, 4, 9, 1, 7, 5, 11, 3, 14, 10, 0, 6, 13]
         ],
+        // S2
         [
             [15, 1, 8, 14, 6, 11, 3, 4, 9, 7, 2, 13, 12, 0, 5, 10],
             [3, 13, 4, 7, 15, 2, 8, 14, 12, 0, 1, 10, 6, 9, 11, 5],
             [0, 14, 7, 11, 10, 4, 13, 1, 5, 8, 12, 6, 9, 3, 2, 15],
             [13, 8, 10, 1, 3, 15, 4, 2, 11, 6, 7, 12, 0, 5, 14, 9]
         ],
+        // S3
         [
             [10, 0, 9, 14, 6, 3, 15, 5, 1, 13, 12, 7, 11, 4, 2, 8],
             [13, 7, 0, 9, 3, 4, 6, 10, 2, 8, 5, 14, 12, 11, 15, 1],
             [13, 6, 4, 9, 8, 15, 3, 0, 11, 1, 2, 12, 5, 10, 14, 7],
             [1, 10, 13, 0, 6, 9, 8, 7, 4, 15, 14, 3, 11, 5, 2, 12]
         ],
+        // S4
         [
             [7, 13, 14, 3, 0, 6, 9, 10, 1, 2, 8, 5, 11, 12, 4, 15],
             [13, 8, 11, 5, 6, 15, 0, 3, 4, 7, 2, 12, 1, 10, 14, 9],
             [10, 6, 9, 0, 12, 11, 7, 13, 15, 1, 3, 14, 5, 2, 8, 4],
             [3, 15, 0, 6, 10, 1, 13, 8, 9, 4, 5, 11, 12, 7, 2, 14]
         ],
+        // S5
         [
             [2, 12, 4, 1, 7, 10, 11, 6, 8, 5, 3, 15, 13, 0, 14, 9],
             [14, 11, 2, 12, 4, 7, 13, 1, 5, 0, 15, 10, 3, 9, 8, 6],
             [4, 2, 1, 11, 10, 13, 7, 8, 15, 9, 12, 5, 6, 3, 0, 14],
             [11, 8, 12, 7, 1, 14, 2, 13, 6, 15, 0, 9, 10, 4, 5, 3]
         ],
+        // S6
         [
             [12, 1, 10, 15, 9, 2, 6, 8, 0, 13, 3, 4, 14, 7, 5, 11],
             [10, 15, 4, 2, 7, 12, 9, 5, 6, 1, 13, 14, 0, 11, 3, 8],
             [9, 14, 15, 5, 2, 8, 12, 3, 7, 0, 4, 10, 1, 13, 11, 6],
             [4, 3, 2, 12, 9, 5, 15, 10, 11, 14, 1, 7, 6, 0, 8, 13]
         ],
+        // S7
         [
             [4, 11, 2, 14, 15, 0, 8, 13, 3, 12, 9, 7, 5, 10, 6, 1],
             [13, 0, 11, 7, 4, 9, 1, 10, 14, 3, 5, 12, 2, 15, 8, 6],
             [1, 4, 11, 13, 12, 3, 7, 14, 10, 15, 6, 8, 0, 5, 9, 2],
             [6, 11, 13, 8, 1, 4, 10, 7, 9, 5, 0, 15, 14, 2, 3, 12]
         ],
+        // S8
         [
             [13, 2, 8, 4, 6, 15, 11, 1, 10, 9, 3, 14, 5, 0, 12, 7],
             [1, 15, 13, 8, 10, 3, 7, 4, 12, 5, 6, 11, 0, 14, 9, 2],
@@ -478,9 +542,17 @@ const DES = {
         ]
     ],
 
-    permute(bits, table) { return table.map(i => bits[i - 1]); },
-    split(bits, n) { return [bits.slice(0, n), bits.slice(n)]; },
-    xor(a, b) { return a.map((x, i) => x ^ b[i]); },
+    permute(bits, table) { 
+        return table.map(i => bits[i - 1]); 
+    },
+    
+    split(bits, n) { 
+        return [bits.slice(0, n), bits.slice(n)]; 
+    },
+    
+    xor(a, b) { 
+        return a.map((x, i) => x ^ b[i]); 
+    },
     
     bytesToBits(bytes) {
         const bits = [];
@@ -583,7 +655,7 @@ const DES = {
             const keyIdx = mode === 'encrypt' ? i : 15 - i;
             const before = bits.join('');
             bits = this.fk(bits, subkeys[keyIdx]);
-            push(`🔁 Round ${i+1} (K${keyIdx+1}) — Expansion → XOR → S-Box → P → XOR`, 
+            push(`🔁 Round ${i+1} (K${keyIdx+1})`, 
                 `${before} → ${bits.join('')}`);
             if (i < 15) {
                 const [l, r] = this.split(bits, 32);
@@ -616,16 +688,21 @@ const algoConfig = {
         inputPlaceholder: '0123456789abcdef',
         keyPlaceholder: 'fedcba9876543210',
         parseInput: (s) => {
+            const cleaned = s.trim().replace(/\s/g, '');
             const bytes = [];
-            for (let i = 0; i < s.length; i += 2) {
-                bytes.push(parseInt(s.substr(i, 2), 16));
+            for (let i = 0; i < cleaned.length; i += 2) {
+                bytes.push(parseInt(cleaned.substr(i, 2), 16));
             }
             return bytes;
         },
         formatResult: (result) => result.map(b => b.toString(16).padStart(2, '0')).join(''),
         validate: (input, key) => {
-            if (input.length !== 16) throw new Error('Input harus 16 karakter hex (8 byte)');
-            if (key.length !== 16) throw new Error('Key harus 16 karakter hex (8 byte)');
+            if (!Array.isArray(input) || input.length !== 8) {
+                throw new Error('Input harus 8 byte (16 karakter hex)');
+            }
+            if (!Array.isArray(key) || key.length !== 8) {
+                throw new Error('Key harus 8 byte (16 karakter hex)');
+            }
         }
     },
     sdes: {
@@ -635,13 +712,24 @@ const algoConfig = {
         keyLabel: 'Key (10-bit biner)',
         inputPlaceholder: '10101010',
         keyPlaceholder: '1010101010',
-        parseInput: (s) => s.split('').map(c => parseInt(c)),
+        parseInput: (s) => {
+            const cleaned = s.trim().replace(/\s/g, '');
+            return cleaned.split('').map(c => parseInt(c, 10));
+        },
         formatResult: (result) => result.join(''),
         validate: (input, key) => {
-            if (input.length !== 8) throw new Error('Input harus 8 bit biner');
-            if (key.length !== 10) throw new Error('Key harus 10 bit biner');
-            if (input.some(b => isNaN(b) || b < 0 || b > 1)) throw new Error('Hanya boleh 0 atau 1');
-            if (key.some(b => isNaN(b) || b < 0 || b > 1)) throw new Error('Hanya boleh 0 atau 1');
+            if (!Array.isArray(input) || input.length !== 8) {
+                throw new Error('Input harus 8 bit biner');
+            }
+            if (!Array.isArray(key) || key.length !== 10) {
+                throw new Error('Key harus 10 bit biner');
+            }
+            if (input.some(b => isNaN(b) || b < 0 || b > 1)) {
+                throw new Error('Input hanya boleh 0 atau 1');
+            }
+            if (key.some(b => isNaN(b) || b < 0 || b > 1)) {
+                throw new Error('Key hanya boleh 0 atau 1');
+            }
         }
     },
     aes: {
@@ -652,16 +740,21 @@ const algoConfig = {
         inputPlaceholder: '00112233445566778899aabbccddeeff',
         keyPlaceholder: '000102030405060708090a0b0c0d0e0f',
         parseInput: (s) => {
+            const cleaned = s.trim().replace(/\s/g, '');
             const bytes = [];
-            for (let i = 0; i < s.length; i += 2) {
-                bytes.push(parseInt(s.substr(i, 2), 16));
+            for (let i = 0; i < cleaned.length; i += 2) {
+                bytes.push(parseInt(cleaned.substr(i, 2), 16));
             }
             return bytes;
         },
         formatResult: (result) => result.map(b => b.toString(16).padStart(2, '0')).join(''),
         validate: (input, key) => {
-            if (input.length !== 32) throw new Error('Input harus 32 karakter hex (16 byte)');
-            if (key.length !== 32) throw new Error('Key harus 32 karakter hex (16 byte)');
+            if (!Array.isArray(input) || input.length !== 16) {
+                throw new Error('Input harus 16 byte (32 karakter hex)');
+            }
+            if (!Array.isArray(key) || key.length !== 16) {
+                throw new Error('Key harus 16 byte (32 karakter hex)');
+            }
         }
     },
     saes: {
@@ -671,11 +764,18 @@ const algoConfig = {
         keyLabel: 'Key (hex, 16-bit / 4 nibble)',
         inputPlaceholder: 'a1b2',
         keyPlaceholder: 'c3d4',
-        parseInput: (s) => s.split('').map(c => parseInt(c, 16)),
+        parseInput: (s) => {
+            const cleaned = s.trim().replace(/\s/g, '');
+            return cleaned.split('').map(c => parseInt(c, 16));
+        },
         formatResult: (result) => result.map(n => n.toString(16).toUpperCase()).join(''),
         validate: (input, key) => {
-            if (input.length !== 4) throw new Error('Input harus 4 karakter hex (4 nibble)');
-            if (key.length !== 4) throw new Error('Key harus 4 karakter hex (4 nibble)');
+            if (!Array.isArray(input) || input.length !== 4) {
+                throw new Error('Input harus 4 karakter hex (4 nibble)');
+            }
+            if (!Array.isArray(key) || key.length !== 4) {
+                throw new Error('Key harus 4 karakter hex (4 nibble)');
+            }
         }
     }
 };
@@ -767,9 +867,12 @@ function processCrypto() {
     const mode = document.getElementById('modeSelect').value;
 
     try {
-        config.validate(inputStr, keyStr);
+        // PARSE dulu (ubah string menjadi array)
         const input = config.parseInput(inputStr);
         const key = config.parseInput(keyStr);
+        
+        // VALIDASI setelah parse
+        config.validate(input, key);
         
         let result, steps;
         if (mode === 'encrypt') {
@@ -786,6 +889,7 @@ function processCrypto() {
 
     } catch (err) {
         alert('❌ Error: ' + err.message);
+        console.error('Error detail:', err);
     }
 }
 
